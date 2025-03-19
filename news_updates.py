@@ -1,12 +1,10 @@
 import streamlit as st
-from newsapi import NewsApiClient
-# import pandas as pd
-import datetime as dt
 from groq import Groq
 import requests
+import datetime as dt
 
-newsapi=""
-newsapi = NewsApiClient(api_key='a936d138328d49d0b165cd93d477131b')
+# API Keys
+NEWS_API_KEY = 'a936d138328d49d0b165cd93d477131b'
 GROQ_API_KEY = "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"
 MODEL = 'llama-3.3-70b-versatile'
 
@@ -24,16 +22,21 @@ def get_sources():
         print(source['id'])
 
 def get_news(topic):
-    data = newsapi.get_everything(q=topic, language='en', sort_by='relevancy', page_size=5)
-    # for article in data['articles']:
-        # print('Title: ',article['title'])
-        # print('Description: ',article['description'])
-        # print('URL: ',article['url'])
-        # print('Published At: ',article['publishedAt'])
-        # print('Content: ',article['content'])
-        # print("sources:", article['source'])
-        # print("--------------------------------")
-    return data['articles']
+    url = 'https://newsapi.org/v2/everything'
+    params = {
+        'q': topic,
+        'apiKey': NEWS_API_KEY,
+        'language': 'en',
+        'sortBy': 'relevancy',
+        'pageSize': 5
+    }
+    
+    response = requests.get(url, params=params)
+    if response.status_code == 200:
+        return response.json()['articles']
+    else:
+        st.error(f"Error fetching news: {response.status_code}")
+        return []
 
 def run_conversation(user_input):
     messages=[
