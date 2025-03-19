@@ -1,20 +1,12 @@
 import streamlit as st
-from groq import Groq
 import requests
+import json
 import datetime as dt
 
 # API Keys
 NEWS_API_KEY = 'a936d138328d49d0b165cd93d477131b'
 GROQ_API_KEY = "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"
 MODEL = 'llama-3.3-70b-versatile'
-
-client = Groq(api_key=GROQ_API_KEY)
-
-# Initialize session state for chat history if it doesn't exist
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "assistant", "content": "Hello! I'm your news assistant. Ask me about any news topic!"}
-    ]
 
 def get_sources():
     data = newsapi.get_sources()
@@ -39,66 +31,79 @@ def get_news(topic):
         return []
 
 def run_conversation(user_input):
-    messages=[
-            {
-                "role": "system",
-                "content": """
-                You are a tool calling News Bot, you will be given a topic and you will need to call the get_news function to get the news related to the topic.
-                You will need to call the get_news function to get the news related to the topic.
-                Each article should be displayed inthis structured format
-                - Provide an answers to the questions asked by the user 
-                - Provide a short title
-                - Provide a short summary
-                - Provide the URL
-                Try to be as concise and provide the information in a readable format, each article should be displayed in a new line with its URL
-                Add a "----------------------------------------" after each article
-                """
-            },
-            {
-                "role": "user",
-                "content": user_input, 
-            }
-        ]
-    tools=[
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_news",
-                    "description": "Get the news related to the topic",
-                    "parameters": {
-                        "type": "object",
-                        "properties":{
-                            "topic":{
-                                "type": "string",
-                                "description": "Decide what the best Keyword is to get the news related to"
-                            }
-                        },
-                        "required": ["auto"]
-                    }
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    messages = [
+        {
+            "role": "system",
+            "content": """
+            You are a tool calling News Bot, you will be given a topic and you will need to call the get_news function to get the news related to the topic.
+            You will need to call the get_news function to get the news related to the topic.
+            Each article should be displayed in this structured format
+            - Provide an answers to the questions asked by the user 
+            - Provide a short title
+            - Provide a short summary
+            - Provide the URL
+            Try to be as concise and provide the information in a readable format, each article should be displayed in a new line with its URL
+            Add a "----------------------------------------" after each article
+            """
+        },
+        {
+            "role": "user",
+            "content": user_input
+        }
+    ]
+    
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_news",
+                "description": "Get the news related to the topic",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "topic": {
+                            "type": "string",
+                            "description": "Decide what the best Keyword is to get the news related to"
+                        }
+                    },
+                    "required": ["topic"]
                 }
             }
-        ]
-    response = client.chat.completions.create(
-        messages=messages,
-        model=MODEL,
-        tool_choice="auto",
-        tools=tools
+        }
+    ]
+    
+    payload = {
+        "messages": messages,
+        "model": MODEL,
+        "tool_choice": "auto",
+        "tools": tools
+    }
+    
+    response = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers=headers,
+        json=payload
     )
-    response_message = response.choices[0].message
-    # print('Initial response: ', response_message,'\n')
-    tool_calls = response_message.tool_calls
-    # print('Tool calls: ', tool_calls,'\n')
-
+    
+    if response.status_code != 200:
+        return f"Error: {response.status_code} - {response.text}"
+    
+    response_data = response.json()
+    response_message = response_data['choices'][0]['message']
+    tool_calls = response_message.get('tool_calls', [])
+    
     if tool_calls:
         messages.append(response_message)
-    
-        tool_call = tool_calls[0]  # Get the first tool call
-        function_args = eval(tool_call.function.arguments)  # Parse the JSON arguments
-        print(function_args['topic'])
+        tool_call = tool_calls[0]
+        function_args = json.loads(tool_call['function']['arguments'])
         news = get_news(function_args['topic'])
-        # Combine all articles into one string
+        
         news_content = ""
-        # news_content = "Here are the latest articles:\n\n"
         for i, article in enumerate(news, 1):
             news_content += f"""
             Article {i}:
@@ -109,27 +114,36 @@ def run_conversation(user_input):
             Content: {article['content']}
             Source: {article['source']['name']}
             ----------------------------------------
-        """
-        messages.append(
-            {
-                "tool_call_id": tool_call.id,
-                "role": "tool",
-                "content": news_content,
-                "name": "get_news"
-            }
+            """
+        
+        messages.append({
+            "tool_call_id": tool_call['id'],
+            "role": "tool",
+            "content": news_content,
+            "name": "get_news"
+        })
+        
+        second_response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers=headers,
+            json={"messages": messages, "model": MODEL}
         )
-        second_response = client.chat.completions.create(
-            messages=messages,
-            model=MODEL
-        )
-        print(second_response.choices[0].message.content)
-        return second_response.choices[0].message.content
+        
+        if second_response.status_code != 200:
+            return f"Error in second response: {second_response.status_code} - {second_response.text}"
+            
+        return second_response.json()['choices'][0]['message']['content']
     else:
-        print(response_message.content)
-        return response_message.content
+        return response_message['content']
 
 # Streamlit UI
 st.title("News Chat Assistant 📰")
+
+# Initialize session state for chat history if it doesn't exist
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        {"role": "assistant", "content": "Hello! I'm your news assistant. Ask me about any news topic!"}
+    ]
 
 # Display chat history
 for message in st.session_state.messages:
