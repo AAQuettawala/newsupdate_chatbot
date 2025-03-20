@@ -20,7 +20,9 @@ def get_news(topic):
         'apiKey': NEWS_API_KEY,
         'language': 'en',
         'sortBy': 'relevancy',
-        'pageSize': 5
+        'pageSize': 5,
+        'excludeDomains': 'bbc.co.uk,'
+
     }
     
     response = requests.get(url, params=params)
@@ -42,11 +44,14 @@ def run_conversation(user_input):
             "content": """
             You are a tool calling News Bot, you will be given a topic and you will need to call the get_news function to get the news related to the topic.
             You will need to call the get_news function to get the news related to the topic.
+            
+            When giving an answer give a brief summary of all the articles and then list the articles in the format below
             Each article should be displayed in this structured format
             - Provide an answers to the questions asked by the user 
             - Provide a short title
             - Provide a short summary
             - Provide the URL
+            - Provide the publishedAt date
             Try to be as concise and provide the information in a readable format, each article should be displayed in a new line with its URL
             Add a "----------------------------------------" after each article
             """
@@ -71,7 +76,7 @@ def run_conversation(user_input):
                             "description": "Decide what the best Keyword is to get the news related to"
                         }
                     },
-                    "required": ["topic"]
+                    "required": ["auto"]
                 }
             }
         }
@@ -112,7 +117,8 @@ def run_conversation(user_input):
             URL: {article['url']}
             Published At: {article['publishedAt']}
             Content: {article['content']}
-            Source: {article['source']['name']}
+            Source: {article['source']['name']}'
+            publishedAt: {article['publishedAt']}s
             ----------------------------------------
             """
         
@@ -163,6 +169,7 @@ if prompt := st.chat_input("What news would you like to know about?"):
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             response = run_conversation(prompt)
+            st.write('printing reponse: ')
             st.write(response)
     
     # Add assistant response to chat history
